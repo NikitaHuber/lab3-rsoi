@@ -64,7 +64,8 @@ jobs:
 
       - uses: docker/setup-buildx-action@v2
 
-      - uses: actions/download-artifact@v3
+      - name: Download artifact gateway-jar
+        uses: actions/download-artifact@v3
         with:
           name: gateway-jar
           path: gateway/build/libs/
