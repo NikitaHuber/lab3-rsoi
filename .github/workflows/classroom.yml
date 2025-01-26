@@ -8,7 +8,54 @@ on:
       - master
 jobs:
   build:
+    name: Build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        project:
+          - gateway
+          - libraryservice
+          - reservationservice
+          - ratingservice
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Prepare OpenJDK
+        uses: actions/setup-java@v3
+        with:
+          distribution: "corretto"
+          java-version: "21"
+          cache: "gradle"
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x ${{ matrix.project }}/gradlew
+
+      - name: Build ${{ matrix.project }}
+        working-directory: ${{ matrix.project }}
+        run: ./gradlew build
+
+      - name: Upload artifact ${{ matrix.project }}
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ matrix.project }}-jar
+          path: ${{ matrix.project }}/build/libs/*.jar
+          retention-days: 1
+          
+      - name: Test Report
+        uses: mikepenz/action-junit-report@v4
+        if: always()
+        with:
+          report_paths: '**/build/test-results/test/TEST-*.xml'
+
+      # - name: Build project
+      #   uses: eskatos/gradle-command-action@v2
+      #   with:
+      #     arguments: clean build
+  grade:
     name: Autograding
+    needs: [build]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -16,6 +63,27 @@ jobs:
           fetch-depth: 0
 
       - uses: docker/setup-buildx-action@v2
+
+      - uses: actions/download-artifact@v3
+        with:
+          name: gateway-jar
+          path: gateway/build/libs/
+
+      - uses: actions/download-artifact@v3
+        with:
+          name: libraryservice-jar
+          path: libraryservice/build/libs/
+
+      - uses: actions/download-artifact@v3
+        with:
+          name: reservationservice-jar
+          path: reservationservice/build/libs/
+
+      - uses: actions/download-artifact@v3
+        with:
+          name: ratingservice-jar
+          path: ratingservice/build/libs/
+
 
       # TODO build and run unit tests
 
@@ -26,34 +94,22 @@ jobs:
       - name: Run containers
         timeout-minutes: 5
         run: |
-          docker compose up -d
+          docker compose up --wait
           ./scripts/wait-script.sh
         env:
           WAIT_PORTS: 8080,8070,8060,8050
 
-      # TODO setup variant, service and port
-
       - name: Run API Tests
-        timeout-minutes: 5
-        run: ./scripts/test-script.sh
-        env:
-          VARIANT: <variant>
-          SERVICE_NAME: <your service name>
-          PORT_NUMBER: <port number>
+        uses: matt-ball/newman-action@master
+        with:
+          collection: v4/postman/collection.json
+          environment: v4/postman/environment.json
+          delayRequest: 100
+          reporters: '[ "cli" ]'
 
       - uses: education/autograding@v1
         id: autograder
         continue-on-error: true
-
-      - name: Github auto grader mark
-        uses: Romanow/google-sheet-autograder-marker@v1.0
-        with:
-          google_token: ${{secrets.GOOGLE_API_KEY}}
-          sheet_id: "1xkgjUX6Qmk7rdJG-QPOToav-HWWtthJjnShIKnw3oIY"
-          homework_number: 3
-          user_column: 'D'
-          column_offset: 'F'
-          mark: "'+"
 
       - name: Stop containers
         if: always()
