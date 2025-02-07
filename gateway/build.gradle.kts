@@ -27,6 +27,8 @@ dependencies {
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     implementation("org.springframework.boot:spring-boot-starter-actuator:3.4.2")
 
+    implementation("io.github.resilience4j:resilience4j-spring-boot3:2.3.0")
+    implementation("io.github.resilience4j:resilience4j-all:2.3.0") // Optional, only required when you want to use the Decorators class
     // https://mvnrepository.com/artifact/com.mashape.unirest/unirest-java
 
     implementation("org.springframework.boot:spring-boot-configuration-processor")

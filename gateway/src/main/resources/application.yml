@@ -11,3 +11,18 @@ management:
         web:
             base-path: /manage
             exposure.include: info,health,loggers
+resilience4j.circuitbreaker:
+    configs:
+        default:
+            registerHealthIndicator: true
+            slidingWindowSize: 5
+            minimumNumberOfCalls: 5
+            permittedNumberOfCallsInHalfOpenState: 3
+#            automaticTransitionFromOpenToHalfOpenEnabled: true
+            slowCallDurationThreshold: 500
+            slowCallRateThreshold: 50
+            waitDurationInOpenState: 5s
+            failureRateThreshold: 30
+    instances:
+        backendA:
+            baseConfig: default

@@ -2,6 +2,8 @@ package bmstu.nzagainov.gateway.web
 
 import bmstu.nzagainov.gateway.PathResolver
 import bmstu.nzagainov.gateway.domain.*
+import io.github.resilience4j.circuitbreaker.CircuitBreaker
+import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry
 import org.springframework.http.HttpStatus
 import org.springframework.web.bind.annotation.*
 import org.springframework.web.client.RestTemplate
@@ -12,9 +14,11 @@ import java.util.*
 @RestController
 @RequestMapping("/api/v1/")
 class GatewayController(
-    private val pathResolver: PathResolver
+    private val pathResolver: PathResolver,
+    circuitBreakerRegistry: CircuitBreakerRegistry,
 ) {
 
+    private val circuitBreaker: CircuitBreaker = circuitBreakerRegistry.circuitBreaker("backendA")
     private val restTemplate = RestTemplate()
 
     private val dateApiFormat = SimpleDateFormat("yyyy-MM-dd")
@@ -24,10 +28,7 @@ class GatewayController(
         @RequestParam city: String,
         @RequestParam(defaultValue = "0") page: Int,
         @RequestParam(defaultValue = "10") size: Int
-    ) = restTemplate.getForObject(
-        "${pathResolver.library}libraries?city=$city&page=$page&size=$size",
-        LibraryPageableResponse::class.java
-    )
+    ) = responseGetLibraries(city, page, size)
 
     @GetMapping("libraries/{libraryUid}/books")
     fun getBooks(
@@ -35,31 +36,21 @@ class GatewayController(
         @RequestParam(defaultValue = "0") page: Int,
         @RequestParam(defaultValue = "10") size: Int,
         @RequestParam(defaultValue = "false") showAll: Boolean
-    ) = restTemplate.getForObject(
-        "${pathResolver.library}libraries/${libraryUid}/books?showAll=$showAll&page=$page&size=$size",
-        BookPageableResponse::class.java
-    )
+    ) = responseGetBooks(libraryUid, page, size, showAll)
 
     @GetMapping("reservations")
     fun getReservations(
         @RequestHeader("X-User-Name") userName: String,
-    ) = restTemplate.getForObject(
-            "${pathResolver.reservation}/users/$userName/reservations",
-            Array<Reservation>::class.java
-        )!!.map { BookReservationResponse(
-            reservationUid = it.reservationUid,
-            status = it.status,
-            startDate = it.startDate,
-            tillDate = it.tillDate,
-            book = getBookShortResponse(it.bookUid!!),
-            library = getLibrary(it.libraryUid!!)
-        ) }
+    ) = responseGetReservations(userName)
 
     @PostMapping("reservations")
     fun takeBook(
         @RequestHeader("X-User-Name") userName: String,
         @RequestBody request: TakeBookRequest,
     ): TakeBookResponse {
+        val book = getBookShortResponse(request.bookUid, false)
+        val library = getLibrary(request.libraryUid, false)
+
         val rentedSize = restTemplate.getForObject(
             "${pathResolver.reservation}/users/$userName/reservations?status=RENTED",
             Array<Reservation>::class.java
@@ -82,8 +73,8 @@ class GatewayController(
             status = reservation.status,
             startDate = dateApiFormat.format(reservation.startDate!!),
             tillDate = dateApiFormat.format(reservation.tillDate!!),
-            book = getBookShortResponse(reservation.bookUid!!)!!,
-            library = getLibrary(reservation.libraryUid!!)!!,
+            book = book,
+            library = library!!,
             rating = rating,
         )
     }
@@ -121,10 +112,48 @@ class GatewayController(
     @GetMapping("/rating")
     fun getRating(
         @RequestHeader("X-User-Name") userName: String
-    ) = restTemplate.getForObject(
+    ) = responseGetRating(userName)
+
+    private fun responseGetLibraries(city: String, page: Int, size: Int) =
+        circuitBreaker.executeSupplier {
+            restTemplate.getForObject(
+                "${pathResolver.library}libraries?city=$city&page=$page&size=$size",
+                LibraryPageableResponse::class.java
+            )!!
+        }
+
+    private fun responseGetBooks(
+        libraryUid: String,
+        page: Int,
+        size: Int,
+        showAll: Boolean
+    ) = circuitBreaker.executeSupplier {
+            restTemplate.getForObject(
+                "${pathResolver.library}libraries/${libraryUid}/books?showAll=$showAll&page=$page&size=$size",
+                BookPageableResponse::class.java
+            )!!
+        }
+
+    private fun responseGetReservations(userName: String): List<BookReservationResponse> =
+        restTemplate.getForObject(
+            "${pathResolver.reservation}/users/$userName/reservations",
+            Array<Reservation>::class.java
+        )!!.map { BookReservationResponse(
+            reservationUid = it.reservationUid,
+            status = it.status,
+            startDate = it.startDate,
+            tillDate = it.tillDate,
+            book = getBookShortResponse(it.bookUid!!),
+            library = getLibrary(it.libraryUid!!)
+        ) }
+
+
+    private fun responseGetRating(userName: String) =
+        restTemplate.getForObject(
             "${pathResolver.rating}/rating?user=$userName",
             RatingResponse::class.java
         )!!
+
 
     private fun requestStarsDiff(diff: Int, userName: String) {
         restTemplate.put(
@@ -133,14 +162,36 @@ class GatewayController(
         )
     }
 
-    private fun getBookShortResponse(bookUid: UUID) =
-        restTemplate.getForObject(
-            "${pathResolver.library}/books/$bookUid",
-            BookShortResponse::class.java
+    private fun getBookShortResponse(bookUid: UUID, fallback: Boolean = true) = try {
+        circuitBreaker.executeSupplier {
+            restTemplate.getForObject(
+                "${pathResolver.library}/books/$bookUid",
+                BookShortResponse::class.java
+            )
+        }
+    } catch (e: Exception) {
+        if (!fallback) throw e
+        BookShortResponse(
+            bookUid = bookUid,
+            name = "",
+            author = "",
+            genre = "",
         )
+    }
 
-    private fun getLibrary(libraryUid: UUID) = restTemplate.getForObject(
-        "${pathResolver.library}/libraries/$libraryUid",
-        LibraryResponse::class.java
-    )
+
+    private fun getLibrary(libraryUid: UUID, fallback: Boolean = true) = try {
+        restTemplate.getForObject(
+            "${pathResolver.library}/libraries/$libraryUid",
+            LibraryResponse::class.java
+        )
+    } catch (e: Exception) {
+        if (!fallback) throw e
+        LibraryResponse(
+            libraryUid = libraryUid,
+            name = "",
+            address = "",
+            city = ""
+        )
+    }
 }
