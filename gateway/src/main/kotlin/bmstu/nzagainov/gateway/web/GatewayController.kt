@@ -110,7 +110,7 @@ class GatewayController(
     @GetMapping("/rating")
     fun getRating(
         @RequestHeader("X-User-Name") userName: String
-    ) = responseGetRating(userName)
+    ) = responseGetRating(userName, fallback = true)
 
     private fun responseGetLibraries(city: String, page: Int, size: Int) = try {
         circuitBreaker.executeSupplier {
@@ -157,10 +157,7 @@ class GatewayController(
         throw CBException(e.message)
     }
 
-
-
-
-    private fun responseGetRating(userName: String) = try {
+    private fun responseGetRating(userName: String, fallback: Boolean = false) = try {
         circuitBreaker.executeSupplier {
             restTemplate.getForObject(
                 "${pathResolver.rating}/rating?user=$userName",
@@ -168,7 +165,8 @@ class GatewayController(
             )!!
         }
     } catch (e: Exception) {
-        throw CBException("Bonus Service unavailable")
+        if (!fallback) throw CBException("Bonus Service unavailable")
+        RatingResponse(0)
     }
 
     private fun requestStarsDiff(diff: Int, userName: String) {
