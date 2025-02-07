@@ -114,25 +114,32 @@ class GatewayController(
         @RequestHeader("X-User-Name") userName: String
     ) = responseGetRating(userName)
 
-    private fun responseGetLibraries(city: String, page: Int, size: Int) =
+    private fun responseGetLibraries(city: String, page: Int, size: Int) = try {
         circuitBreaker.executeSupplier {
             restTemplate.getForObject(
                 "${pathResolver.library}libraries?city=$city&page=$page&size=$size",
                 LibraryPageableResponse::class.java
             )!!
         }
+    } catch (e: Exception) {
+        throw CBException(e.message)
+    }
 
     private fun responseGetBooks(
         libraryUid: String,
         page: Int,
         size: Int,
         showAll: Boolean
-    ) = circuitBreaker.executeSupplier {
+    ) = try {
+        circuitBreaker.executeSupplier {
             restTemplate.getForObject(
                 "${pathResolver.library}libraries/${libraryUid}/books?showAll=$showAll&page=$page&size=$size",
                 BookPageableResponse::class.java
             )!!
         }
+    } catch (e: Exception) {
+        throw CBException(e.message)
+    }
 
     private fun responseGetReservations(userName: String): List<BookReservationResponse> =
         restTemplate.getForObject(
@@ -170,7 +177,7 @@ class GatewayController(
             )
         }
     } catch (e: Exception) {
-        if (!fallback) throw e
+        if (!fallback) throw CBException(e.message)
         BookShortResponse(
             bookUid = bookUid,
             name = "",
@@ -186,7 +193,7 @@ class GatewayController(
             LibraryResponse::class.java
         )
     } catch (e: Exception) {
-        if (!fallback) throw e
+        if (!fallback) throw CBException(e.message)
         LibraryResponse(
             libraryUid = libraryUid,
             name = "",
