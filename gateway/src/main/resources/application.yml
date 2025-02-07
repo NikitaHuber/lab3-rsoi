@@ -15,10 +15,10 @@ resilience4j.circuitbreaker:
     configs:
         default:
             registerHealthIndicator: true
-            slidingWindowSize: 2
-            minimumNumberOfCalls: 2
+            slidingWindowSize: 3
+            minimumNumberOfCalls: 3
             permittedNumberOfCallsInHalfOpenState: 1
-#            automaticTransitionFromOpenToHalfOpenEnabled: true
+            automaticTransitionFromOpenToHalfOpenEnabled: true
             slowCallDurationThreshold: 500
             slowCallRateThreshold: 50
             waitDurationInOpenState: 5s
