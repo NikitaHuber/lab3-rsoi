@@ -110,7 +110,7 @@ class GatewayController(
     @GetMapping("/rating")
     fun getRating(
         @RequestHeader("X-User-Name") userName: String
-    ) = responseGetRating(userName, fallback = true)
+    ) = responseGetRating(userName)
 
     private fun responseGetLibraries(city: String, page: Int, size: Int) = try {
         circuitBreaker.executeSupplier {
