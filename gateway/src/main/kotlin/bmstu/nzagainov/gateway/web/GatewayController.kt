@@ -165,8 +165,7 @@ class GatewayController(
             )!!
         }
     } catch (e: Exception) {
-        if (!fallback) throw CBException("Bonus Service unavailable")
-        RatingResponse(0)
+        throw CBException("Bonus Service unavailable")
     }
 
     private fun requestStarsDiff(diff: Int, userName: String) {
