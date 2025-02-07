@@ -51,14 +51,12 @@ class GatewayController(
         val book = getBookShortResponse(request.bookUid, false)
         val library = getLibrary(request.libraryUid, false)
 
+        val rating = responseGetRating(userName)
         val rentedSize = restTemplate.getForObject(
             "${pathResolver.reservation}/users/$userName/reservations?status=RENTED",
             Array<Reservation>::class.java
         )!!.size
-        val rating = restTemplate.getForObject(
-            "${pathResolver.rating}/rating?user=$userName",
-            RatingResponse::class.java
-        )
+
         if (rating!!.stars <= rentedSize) {
             throw Error("Allowable count: ${rating.stars}, taken: $rentedSize")
         }
