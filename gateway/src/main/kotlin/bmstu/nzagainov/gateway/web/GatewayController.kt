@@ -141,26 +141,37 @@ class GatewayController(
         throw CBException(e.message)
     }
 
-    private fun responseGetReservations(userName: String): List<BookReservationResponse> =
-        restTemplate.getForObject(
-            "${pathResolver.reservation}/users/$userName/reservations",
-            Array<Reservation>::class.java
-        )!!.map { BookReservationResponse(
-            reservationUid = it.reservationUid,
-            status = it.status,
-            startDate = it.startDate,
-            tillDate = it.tillDate,
-            book = getBookShortResponse(it.bookUid!!),
-            library = getLibrary(it.libraryUid!!)
-        ) }
+    private fun responseGetReservations(userName: String): List<BookReservationResponse> = try {
+        circuitBreaker.executeSupplier {
+            restTemplate.getForObject(
+                "${pathResolver.reservation}/users/$userName/reservations",
+                Array<Reservation>::class.java
+            )!!.map { BookReservationResponse(
+                reservationUid = it.reservationUid,
+                status = it.status,
+                startDate = it.startDate,
+                tillDate = it.tillDate,
+                book = getBookShortResponse(it.bookUid!!),
+                library = getLibrary(it.libraryUid!!)
+            ) }
+        }
+    } catch (e: Exception) {
+        throw CBException(e.message)
+    }
 
 
-    private fun responseGetRating(userName: String) =
-        restTemplate.getForObject(
-            "${pathResolver.rating}/rating?user=$userName",
-            RatingResponse::class.java
-        )!!
 
+
+    private fun responseGetRating(userName: String) = try {
+        circuitBreaker.executeSupplier {
+            restTemplate.getForObject(
+                "${pathResolver.rating}/rating?user=$userName",
+                RatingResponse::class.java
+            )!!
+        }
+    } catch (e: Exception) {
+        throw CBException(e.message)
+    }
 
     private fun requestStarsDiff(diff: Int, userName: String) {
         restTemplate.put(
