@@ -5,6 +5,7 @@ import bmstu.nzagainov.gateway.domain.*
 import io.github.resilience4j.circuitbreaker.CircuitBreaker
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry
 import org.springframework.http.HttpStatus
+import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.web.bind.annotation.*
 import org.springframework.web.client.RestTemplate
 import java.text.SimpleDateFormat
@@ -17,6 +18,16 @@ class GatewayController(
     private val pathResolver: PathResolver,
     circuitBreakerRegistry: CircuitBreakerRegistry,
 ) {
+
+    private val ratingQueue: Queue<Pair<String, Int>> = LinkedList()
+
+    @Scheduled(fixedRate = 10_000)
+    fun checkRecords() {
+        repeat(ratingQueue.size) {
+            val request = ratingQueue.poll()
+            requestStarsDiff(request.second, request.first)
+        }
+    }
 
     private val circuitBreaker: CircuitBreaker = circuitBreakerRegistry.circuitBreaker("backendA")
     private val restTemplate = RestTemplate()
@@ -168,10 +179,14 @@ class GatewayController(
     }
 
     private fun requestStarsDiff(diff: Int, userName: String) {
-        restTemplate.put(
-            "${pathResolver.rating}/rating?user=$userName&diff=$diff",
-            String::class.java,
-        )
+        try {
+            restTemplate.put(
+                "${pathResolver.rating}/rating?user=$userName&diff=$diff",
+                String::class.java,
+            )
+        } catch (e: Exception) {
+            ratingQueue.add(Pair(userName, diff))
+        }
     }
 
     private fun getBookShortResponse(bookUid: UUID, fallback: Boolean = true) = try {
